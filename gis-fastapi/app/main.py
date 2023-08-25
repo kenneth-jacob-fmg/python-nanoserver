@@ -1,11 +1,9 @@
 from fastapi import FastAPI, Header, status, HTTPException, Request
 
 from typing import Union
-from subprocess import call
 import hmac, hashlib, json, requests
-import threading, datetime, os
+import asyncio, datetime, os
 import re, configparser, logging
-
 from app.models.upload import Upload
 
 logger = logging.getLogger("fastapi")
@@ -41,7 +39,8 @@ LOG_PATH = f'{BYDA_FOLDER}\\logs'
 
 app = FastAPI()
 
-def execute_thread(req_info):
+async def execute_thread(req_info):
+    
     filename = f'{req_info[0]["uuid"]}.json'
     message = req_info[0]["message"]
 
@@ -117,13 +116,12 @@ async def referral_post(x_swx_signature: Union[str, None] = Header(default=None)
     request_body = json.dumps(req_info, separators=(',', ':'))
 
     signature = hmac.new(SIGNING_SECRET_KEY.encode(), request_body.encode(), hashlib.sha256).hexdigest()
-    
+    #logger.info(signature);
     if(not (x_swx_signature == f'sha256={signature}')):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                         detail=f'Unauthorized usage.')
 
-    process_thread = threading.Thread(target=execute_thread, args=(req_info,))
-    process_thread.start()
+    asyncio.create_task(execute_thread(req_info))
 
     return {}
 

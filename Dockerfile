@@ -1,8 +1,8 @@
 ARG WINDOWS_VERSION
 FROM mcr.microsoft.com/windows/servercore:$WINDOWS_VERSION
 
-ARG PYTHON_VERSION=3.11.4
-ARG PYTHON_RELEASE=3.11.4
+ARG PYTHON_VERSION=3.9.13
+ARG PYTHON_RELEASE=3.9.13
 # if this is called "PIP_VERSION", pip explodes with "ValueError: invalid truth value '<VERSION>'"
 ARG PYTHON_PIP_VERSION=23.2.1
 # https://github.com/pypa/get-pip
