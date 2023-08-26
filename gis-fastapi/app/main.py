@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Header, status, HTTPException, Request
+from fastapi import FastAPI, Header, status, HTTPException, Request, BackgroundTasks
 
 from typing import Union
 import hmac, hashlib, json, requests
-import asyncio, datetime, os
+import datetime, os
 import re, configparser, logging
 from app.models.upload import Upload
 
@@ -39,7 +39,7 @@ LOG_PATH = f'{BYDA_FOLDER}\\logs'
 
 app = FastAPI()
 
-async def execute_thread(req_info):
+def execute_thread(req_info):
     
     filename = f'{req_info[0]["uuid"]}.json'
     message = req_info[0]["message"]
@@ -107,7 +107,7 @@ async def referral_get():
     return {}
 
 @app.post("/referral")
-async def referral_post(x_swx_signature: Union[str, None] = Header(default=None),
+async def referral_post(background_tasks: BackgroundTasks, x_swx_signature: Union[str, None] = Header(default=None),
                          request: Request = None):
 
     # request.json() returns dictionary object
@@ -121,7 +121,7 @@ async def referral_post(x_swx_signature: Union[str, None] = Header(default=None)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                         detail=f'Unauthorized usage.')
 
-    asyncio.create_task(execute_thread(req_info))
+    background_tasks.add_task(execute_thread, req_info)
 
     return {}
 
