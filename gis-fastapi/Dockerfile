@@ -1,4 +1,4 @@
-FROM fmgaksacr.azurecr.io/python-nanoserver:3.9.13_1809
+FROM fmgaksacr.azurecr.io/python-nanoserver:3.11.5_1809
 
 ENV SSL_CERTFILE "localhost+2.pem"
 ENV SSL_KEYFILE "localhost+2-key.pem"
