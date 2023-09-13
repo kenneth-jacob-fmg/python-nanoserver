@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Header, status, HTTPException, Request, BackgroundTasks
 
 from typing import Union
-import hmac, hashlib, json, requests
+import hmac, hashlib, json, requests, ssl
 import datetime, os
 import re, configparser, logging
 from app.models.upload import Upload
+from app.models.custom_http_adapter import CustomHttpAdapter
 
 logger = logging.getLogger("fastapi")
 
@@ -36,6 +37,7 @@ REFERRAL_FOLDER = f'{BYDA_FOLDER}\\referrals'
 SERVER_REFERRAL_FOLDER = f'{SERVER_ROOT_FOLDER}\\referrals'
 #SCRIPT_FILE_PATH = f'{BYDA_FOLDER}\\script\\{config[config_section]["ScriptName"]}'
 LOG_PATH = f'{BYDA_FOLDER}\\logs'
+SSL_PATH = f'{BYDA_FOLDER}\\ssl\\{config[config_section]["FortescueSSLCertChain"]}'
 
 app = FastAPI()
 
@@ -76,27 +78,35 @@ def execute_thread(req_info):
     #call(["python", SCRIPT_FILE_PATH, req_info[0]["uuid"]])
 
     logger.info(f'POST - {ARCGIS_PORTAL_TOKEN_URL}')
-    token_result = requests.post(ARCGIS_PORTAL_TOKEN_URL, verify=False,
-                    data={
-                        "f":"json",
-                        "username":ARCGIS_PORTAL_USER,
-                        "password":ARCGIS_PORTAL_PASSWORD,
-                        "referer":ARCGIS_PORTAL_REFERER,
-                        "expiration":60
-                    })
+    payload = {
+        "f":"json",
+        "username":ARCGIS_PORTAL_USER,
+        "password":ARCGIS_PORTAL_PASSWORD,
+        "referer":ARCGIS_PORTAL_REFERER,
+        "expiration":60
+    }
+
+    # --------
+    # NOTE: Applied workaround
+    # https://stackoverflow.com/questions/71603314/ssl-error-unsafe-legacy-renegotiation-disabled
+    # --------
+
+    #token_result = requests.post(ARCGIS_PORTAL_TOKEN_URL, verify=f'{SSL_PATH}', data=payload)
+    token_result = get_legacy_session().post(ARCGIS_PORTAL_TOKEN_URL, data=payload)
 
     logger.info(token_result)
     token_req_info = token_result.json()
 
     logger.info(f'POST - {BYDA_GPTASK_URL}')
-    gptask_result = requests.post(BYDA_GPTASK_URL, verify=False,
-                data={
+    payload = {
                     "token":token_req_info["token"],
                     "SEQ_NO":sequence_number,
                     "Job_Number":job_number,
                     "Applicant":applicant,
                     "GEOJSON_File":server_filepath
-                    })
+                    }
+    #gptask_result = requests.post(BYDA_GPTASK_URL, verify=f'{SSL_PATH}', data=payload)
+    gptask_result = get_legacy_session().post(BYDA_GPTASK_URL, data=payload)
 
     logger.info(gptask_result)
     gptask_req_info = gptask_result.json()
@@ -189,3 +199,10 @@ async def upload(request: Upload = None):
         "status" : status,
         "message": ""
     }
+
+def get_legacy_session():
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
+    session = requests.session()
+    session.mount('https://', CustomHttpAdapter(ctx))
+    return session
