@@ -200,6 +200,71 @@ async def upload(request: Upload = None):
         "message": ""
     }
 
+@app.post("/upload-package")
+async def upload_package(request: Upload = None):
+    
+    logger.info(request)
+    pattern = '[\w-]+?(?=\.zip)'
+    filename = re.search(pattern, request.path)
+ 
+    current_year = datetime.datetime.today().year
+    referral_folder_name_template = config[config_section]["ReferralFolderNameTemplate"].replace("<YEAR>", str(current_year))
+    filepath = f'{REFERRAL_FOLDER}\\{referral_folder_name_template}\\{filename.group()}\\{filename.group()}.zip'
+
+    # Validate filepath
+    logger.info(filepath)
+    if not os.path.exists(filepath):
+        message = f'Zip {filepath} does not exist'
+        logger.error(message)
+        return {"status": "Failed", "message": message}
+
+    # Read pdf as binary content
+    with open(filepath, mode='rb') as file:
+        fileContent = file.read()
+
+    # Authenticate SmarterWX
+    auth_result = requests.post(f'{BASE_API_URL}/community/auth/tokens', 
+                    json = {'clientId': CLIENT_ID, 'clientSecret': CLIENT_SECRET})
+    auth_rec_info = auth_result.json()
+
+    # Query Referral Detail
+    referral_detail_url = f'{BASE_API_URL}/enquiries/{request.enquiryId}/referrals/{request.referralId}'
+    referral_detail_result = requests.get(referral_detail_url,
+                            headers={'Authorization':auth_rec_info["access_token"]})
+
+    # Validate existing referral detail
+    if referral_detail_result.status_code == 400:
+        message = f'Referral detail not found - {referral_detail_url}'
+        logger.error(message)
+        return {"status": "Failed", "message": message}
+
+    # Request pdf upload location
+    upload_result = requests.post(f'{BASE_API_URL}/system/uploads', 
+                    json = {'name': f'{filename.group()}.zip', 'mimeType': 'application/zip'},
+                    headers={'Authorization':auth_rec_info["access_token"]})
+
+    upload_rec_info = upload_result.json()
+    logger.info(upload_rec_info)
+
+    # Put pdf file to designated AWS S3 Url
+    put_file_result = requests.put(upload_rec_info["url"], data=fileContent)
+    logger.info(f'PUT Request - {put_file_result}')
+
+    # Assign response fileid to the referral detail  
+    add_response_result = requests.post(f'{BASE_API_URL}/enquiries/{request.enquiryId}/referrals/{request.referralId}/responses',
+                            json = {'body': f"{request.emailBodyContent}", "Files": [{"id": upload_rec_info["id"]}]},
+                            headers={'Authorization':auth_rec_info["access_token"]})
+
+    add_response_rec_info = add_response_result.json()
+    logger.info(add_response_rec_info)
+
+    status = "Success"
+
+    return {
+        "status" : status,
+        "message": ""
+    }
+
 def get_legacy_session():
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
